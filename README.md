@@ -9,6 +9,8 @@ docker run -it --rm --network host -v $(pwd)/tidb/mytable.sql:/mytable.sql mysql
 docker run -it --rm --network host mysql mysql -h 127.0.0.1 -P 4000 -u root
 ```
 
+Edit "conf/application.conf" (not .env)
+
 ```shell
 cd sample-social-login
 bash run.sh

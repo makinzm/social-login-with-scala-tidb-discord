@@ -1,5 +1,6 @@
 package controllers
 
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import java.net.URLEncoder
@@ -54,26 +55,45 @@ class HomeController @Inject()(
     Base64.getUrlEncoder.encodeToString(bytes)
   }
 
+  def generateSecureRandomString(length: Int): String = {
+    val random = new SecureRandom()
+    val bytes = new Array[Byte](length)
+    random.nextBytes(bytes)
+    Base64.getUrlEncoder.withoutPadding().encodeToString(bytes)
+  }
+
+  def generateCodeChallenge(codeVerifier: String): String = {
+    val bytes = codeVerifier.getBytes("US-ASCII")
+    val md = MessageDigest.getInstance("SHA-256")
+    md.update(bytes, 0, bytes.length)
+    val digest = md.digest()
+    Base64.getUrlEncoder.withoutPadding().encodeToString(digest)
+  }
+
   def login = Action { implicit request: Request[AnyContent] =>
     val state = generateState()
+    val codeVerifier = generateSecureRandomString(32) // PKCE の code_verifier
+    val codeChallenge = generateCodeChallenge(codeVerifier) // PKCE の code_challenge
     val discordAuthUrl = "https://discord.com/api/oauth2/authorize"
     val params = Map(
       "client_id" -> clientId,
       "redirect_uri" -> redirectUri,
       "response_type" -> "code",
       "scope" -> "identify email",
-      "state" -> state
+      "state" -> state,
+      "code_challenge" -> codeChallenge,
     )
     val urlWithParams = discordAuthUrl + "?" + params.map { case (k, v) => s"$k=${URLEncoder.encode(v, "UTF-8")}" }.mkString("&")
-    Redirect(urlWithParams).withSession(request.session + ("oauthState" -> state))
+    Redirect(urlWithParams).withSession(request.session + ("oauthState" -> state) + ("codeVerifier" -> codeVerifier))
   }
 
   def callback(codeOpt: Option[String], stateOpt: Option[String], errorOpt: Option[String]) = Action.async { implicit request =>
     val sessionStateOpt = request.session.get("oauthState")
-    (stateOpt, sessionStateOpt) match {
-    case (Some(state), Some(sessionState)) if state == sessionState =>
+    val codeVerifierOpt = request.session.get("codeVerifier")
+    (stateOpt, sessionStateOpt, codeVerifierOpt) match {
+    case (Some(state), Some(sessionState), Some(codeVerifier)) if state == sessionState =>
     // stateが一致する場合、セッションからstateを削除
-    val newSession = request.session - "oauthState"
+    val newSession = request.session - "oauthState" - "codeVerifier"
     codeOpt match {
       case Some(code) =>
         val tokenUrl = "https://discord.com/api/oauth2/token"
@@ -83,7 +103,8 @@ class HomeController @Inject()(
           "grant_type" -> "authorization_code",
           "code" -> code,
           "redirect_uri" -> redirectUri,
-          "scope" -> "identify email"
+          "scope" -> "identify email",
+          "code_verifier" -> codeVerifier // PKCE の code_verifier
         )
 
         val formData = data.map { case (k, v) => s"${URLEncoder.encode(k, "UTF-8")}=${URLEncoder.encode(v, "UTF-8")}" }.mkString("&")

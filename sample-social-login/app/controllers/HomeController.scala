@@ -77,6 +77,7 @@ class HomeController @Inject()(
                   .flatMap { userResponse =>
                     val userJson = userResponse.json
                     val discordId = (userJson \ "id").as[String]
+                    val username = (userJson \ "username").as[String]
                     // ユーザーが既に存在するかチェック
                     userRepository.findByDiscordId(discordId).flatMap {
                       case Some(user) =>
@@ -87,6 +88,7 @@ class HomeController @Inject()(
                         val newUser = User(
                           id = None,
                           discordId = discordId,
+                          username = username,
                           createdAt = Some(Timestamp.from(Instant.now())),
                           updatedAt = Some(Timestamp.from(Instant.now()))
                         )

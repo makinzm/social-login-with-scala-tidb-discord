@@ -17,10 +17,11 @@ class UserRepository @Inject()(dbConfigProvider: DatabaseConfigProvider)(implici
   private class UserTable(tag: Tag) extends Table[User](tag, "User") {
     def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
     def discordId = column[String]("discord_id")
+    def username = column[String]("username")
     def createdAt = column[Timestamp]("created_at")
     def updatedAt = column[Timestamp]("updated_at")
 
-    def * = (id.?, discordId, createdAt.?, updatedAt.?) <> ((User.apply _).tupled, User.unapply)
+    def * = (id.?, discordId, username, createdAt.?, updatedAt.?) <> ((User.apply _).tupled, User.unapply)
   }
 
   private val users = TableQuery[UserTable]
@@ -31,6 +32,12 @@ class UserRepository @Inject()(dbConfigProvider: DatabaseConfigProvider)(implici
 
   def create(user: User): Future[User] = db.run {
     (users returning users.map(_.id) into ((user, id) => user.copy(id = Some(id)))) += user
+  }
+
+  def updateUsername(discordId: String, newUsername: String): Future[Int] = db.run {
+    users.filter(_.discordId === discordId)
+      .map(user => (user.username, user.updatedAt))
+      .update((newUsername, new Timestamp(System.currentTimeMillis())))
   }
 }
 

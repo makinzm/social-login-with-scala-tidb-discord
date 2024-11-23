@@ -1,5 +1,6 @@
 package controllers
 
+import java.net.URLEncoder
 import javax.inject._
 import play.api._
 import play.api.mvc._
@@ -7,6 +8,7 @@ import play.api.libs.ws._
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.Configuration
 import play.api.libs.json._
+import org.slf4j.LoggerFactory
 
 import repositories.UserRepository
 import models.User
@@ -20,6 +22,7 @@ class HomeController @Inject()(
     config: Configuration,
     userRepository: UserRepository
 )(implicit ec: ExecutionContext) extends BaseController {
+  private val logger = LoggerFactory.getLogger(this.getClass) // SLF4Jロガー
 
   val clientId = config.get[String]("DISCORD_CLIENT_ID")
   val clientSecret = config.get[String]("DISCORD_CLIENT_SECRET")
@@ -55,8 +58,13 @@ class HomeController @Inject()(
           "scope" -> "identify email"
         )
 
+        val formData = data.map { case (k, v) => s"${URLEncoder.encode(k, "UTF-8")}=${URLEncoder.encode(v, "UTF-8")}" }.mkString("&")
+
         ws.url(tokenUrl)
-          .post(data)
+          .addHttpHeaders(
+            "Content-Type" -> "application/x-www-form-urlencoded"
+          )
+          .post(formData)
           .flatMap { response =>
             val json = response.json
             val accessTokenOpt = (json \ "access_token").asOpt[String]

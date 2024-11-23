@@ -1,17 +1,20 @@
-name := """sample-social-login"""
+name := "sample-social-login"
 organization := "com.example"
-
 version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala)
 
-scalaVersion := "2.13.15"
+scalaVersion := "2.13.14"
 
-libraryDependencies += guice
-libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "7.0.1" % Test
+libraryDependencies ++= Seq(
+  guice,
+  ws,
+  jdbc,
+  "mysql" % "mysql-connector-java" % "8.0.31",
+  "com.typesafe.play" %% "play-slick" % "5.0.2",
+  "com.typesafe.play" %% "play-slick-evolutions" % "5.0.2",
+  "org.scalatestplus.play" %% "scalatestplus-play" % "5.1.0" % Test
+)
 
-// Adds additional packages into Twirl
-//TwirlKeys.templateImports += "com.example.controllers._"
+dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "1.2.0"
 
-// Adds additional packages into conf/routes
-// play.sbt.routes.RoutesKeys.routesImport += "com.example.binders._"

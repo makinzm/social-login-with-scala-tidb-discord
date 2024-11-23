@@ -1,12 +1,15 @@
+@import helper._
+
 @(userOpt: Option[User], notes: Seq[Note])(implicit request: RequestHeader)
 
 @main("メモアプリ") {
   @userOpt.map { user =>
     <h1>ようこそ、@user.username さん</h1>
-    <form action="@routes.HomeController.createNote" method="post">
+    @helper.form(action = routes.HomeController.createNote) {
+      @helper.CSRF.formField
       <textarea name="content" placeholder="メモを入力してください"></textarea><br>
       <button type="submit">メモを投稿</button>
-    </form>
+    }
     <h2>あなたのメモ一覧</h2>
     <ul>
       @for(note <- notes) {

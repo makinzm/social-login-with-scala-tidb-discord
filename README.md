@@ -11,5 +11,5 @@ docker run -it --rm --network host mysql mysql -h 127.0.0.1 -P 4000 -u root
 
 ```shell
 cd sample-social-login
-sbt run
+bash run.sh
 ```

@@ -1,5 +1,7 @@
 package controllers
 
+import java.security.SecureRandom
+import java.util.Base64
 import java.net.URLEncoder
 import javax.inject._
 import play.api._
@@ -44,19 +46,34 @@ class HomeController @Inject()(
     }
   }
 
+  // state生成メソッド
+  def generateState(): String = {
+    val random = new SecureRandom()
+    val bytes = new Array[Byte](16)
+    random.nextBytes(bytes)
+    Base64.getUrlEncoder.encodeToString(bytes)
+  }
+
   def login = Action { implicit request: Request[AnyContent] =>
+    val state = generateState()
     val discordAuthUrl = "https://discord.com/api/oauth2/authorize"
     val params = Map(
       "client_id" -> clientId,
       "redirect_uri" -> redirectUri,
       "response_type" -> "code",
-      "scope" -> "identify email"
+      "scope" -> "identify email",
+      "state" -> state
     )
     val urlWithParams = discordAuthUrl + "?" + params.map { case (k, v) => s"$k=${URLEncoder.encode(v, "UTF-8")}" }.mkString("&")
-    Redirect(urlWithParams)
+    Redirect(urlWithParams).withSession(request.session + ("oauthState" -> state))
   }
 
-  def callback(codeOpt: Option[String], errorOpt: Option[String]) = Action.async { implicit request =>
+  def callback(codeOpt: Option[String], stateOpt: Option[String], errorOpt: Option[String]) = Action.async { implicit request =>
+    val sessionStateOpt = request.session.get("oauthState")
+    (stateOpt, sessionStateOpt) match {
+    case (Some(state), Some(sessionState)) if state == sessionState =>
+    // stateが一致する場合、セッションからstateを削除
+    val newSession = request.session - "oauthState"
     codeOpt match {
       case Some(code) =>
         val tokenUrl = "https://discord.com/api/oauth2/token"
@@ -112,6 +129,9 @@ class HomeController @Inject()(
           }
       case None =>
         Future.successful(Redirect(routes.HomeController.index).flashing("error" -> "認可が拒否されました。"))
+    }
+    case _ =>
+        Future.successful(Redirect(routes.HomeController.index).flashing("error" -> "不正な認証リクエストです。"))
     }
   }
 

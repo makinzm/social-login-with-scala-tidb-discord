@@ -5,7 +5,7 @@
 
 GET     /                      controllers.HomeController.index
 GET     /login                 controllers.HomeController.login
-GET     /auth/callback         controllers.HomeController.callback(code: Option[String], error: Option[String])
+GET     /auth/callback         controllers.HomeController.callback(code: Option[String], state: Option[String], error: Option[String])
 GET     /logout                controllers.HomeController.logout
 
 POST    /note/create           controllers.HomeController.createNote

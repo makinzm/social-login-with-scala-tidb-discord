@@ -10,8 +10,8 @@ import play.api.Configuration
 import play.api.libs.json._
 import org.slf4j.LoggerFactory
 
-import repositories.UserRepository
-import models.User
+import repositories.{UserRepository, NoteRepository}
+import models.{User, Note}
 import java.sql.Timestamp
 import java.time.Instant
 
@@ -20,16 +20,28 @@ class HomeController @Inject()(
     val controllerComponents: ControllerComponents,
     ws: WSClient,
     config: Configuration,
-    userRepository: UserRepository
+    userRepository: UserRepository,
+    noteRepository: NoteRepository
 )(implicit ec: ExecutionContext) extends BaseController {
-  private val logger = LoggerFactory.getLogger(this.getClass) // SLF4Jロガー
+  private val logger = LoggerFactory.getLogger(this.getClass)
 
   val clientId = config.get[String]("DISCORD_CLIENT_ID")
   val clientSecret = config.get[String]("DISCORD_CLIENT_SECRET")
   val redirectUri = config.get[String]("REDIRECT_URI")
 
-  def index = Action { implicit request: Request[AnyContent] =>
-    Ok(views.html.index(request))
+  def index = Action.async { implicit request: Request[AnyContent] =>
+    request.session.get("user").map { discordId =>
+      userRepository.findByDiscordId(discordId).flatMap {
+        case Some(user) =>
+          noteRepository.listByUser(user.id.get).map { notes =>
+            Ok(views.html.index(Some(user), notes))
+          }
+        case None =>
+          Future.successful(Ok(views.html.index(None, Seq.empty)))
+      }
+    }.getOrElse {
+      Future.successful(Ok(views.html.index(None, Seq.empty)))
+    }
   }
 
   def login = Action { implicit request: Request[AnyContent] =>
@@ -40,14 +52,13 @@ class HomeController @Inject()(
       "response_type" -> "code",
       "scope" -> "identify email"
     )
-    val urlWithParams = discordAuthUrl + "?" + params.map { case (k, v) => s"$k=${java.net.URLEncoder.encode(v, "UTF-8")}" }.mkString("&")
+    val urlWithParams = discordAuthUrl + "?" + params.map { case (k, v) => s"$k=${URLEncoder.encode(v, "UTF-8")}" }.mkString("&")
     Redirect(urlWithParams)
   }
 
   def callback(codeOpt: Option[String], errorOpt: Option[String]) = Action.async { implicit request =>
     codeOpt match {
       case Some(code) =>
-        // アクセストークンを取得
         val tokenUrl = "https://discord.com/api/oauth2/token"
         val data = Map(
           "client_id" -> clientId,
@@ -70,7 +81,6 @@ class HomeController @Inject()(
             val accessTokenOpt = (json \ "access_token").asOpt[String]
             accessTokenOpt match {
               case Some(accessToken) =>
-                // ユーザー情報を取得
                 ws.url("https://discord.com/api/users/@me")
                   .addHttpHeaders("Authorization" -> s"Bearer $accessToken")
                   .get()
@@ -78,13 +88,12 @@ class HomeController @Inject()(
                     val userJson = userResponse.json
                     val discordId = (userJson \ "id").as[String]
                     val username = (userJson \ "username").as[String]
-                    // ユーザーが既に存在するかチェック
                     userRepository.findByDiscordId(discordId).flatMap {
                       case Some(user) =>
-                        // 既存ユーザーの場合、セッションを開始
-                        Future.successful(Redirect(routes.HomeController.index).withSession("user" -> discordId))
+                        userRepository.updateUsername(discordId, username).map { _ =>
+                          Redirect(routes.HomeController.index).withSession("user" -> discordId)
+                        }
                       case None =>
-                        // 新規ユーザーの場合、データベースに保存
                         val newUser = User(
                           id = None,
                           discordId = discordId,
@@ -108,6 +117,42 @@ class HomeController @Inject()(
 
   def logout = Action {
     Redirect(routes.HomeController.index).withNewSession
+  }
+
+  def createNote = Action.async { implicit request =>
+    request.session.get("user").map { discordId =>
+      userRepository.findByDiscordId(discordId).flatMap {
+        case Some(user) =>
+          user.id match {
+            case Some(userId) =>
+              val contentOpt = request.body.asFormUrlEncoded.flatMap(_.get("content").flatMap(_.headOption))
+              contentOpt match {
+                case Some(content) if content.nonEmpty =>
+                  val note = Note(
+                    id = None,
+                    userId = userId,
+                    content = content,
+                    createdAt = Some(Timestamp.from(Instant.now())),
+                    updatedAt = Some(Timestamp.from(Instant.now()))
+                  )
+                  noteRepository.create(note).map { _ =>
+                    Redirect(routes.HomeController.index)
+                  }.recover {
+                    case ex: Exception =>
+                      Redirect(routes.HomeController.index).flashing("error" -> s"メモの保存中にエラーが発生しました: ${ex.getMessage}")
+                  }
+                case _ =>
+                  Future.successful(Redirect(routes.HomeController.index).flashing("error" -> "メモの内容が空です。"))
+              }
+            case None =>
+              Future.successful(Redirect(routes.HomeController.index).flashing("error" -> "ユーザーIDが見つかりません。"))
+          }
+        case None =>
+          Future.successful(Redirect(routes.HomeController.login))
+      }
+    }.getOrElse {
+      Future.successful(Redirect(routes.HomeController.login))
+    }
   }
 }
 

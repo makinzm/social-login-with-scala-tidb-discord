@@ -1,12 +1,22 @@
-@(implicit request: RequestHeader)
+@(userOpt: Option[User], notes: Seq[Note])(implicit request: RequestHeader)
 
-@main("Welcome to Play") {
-  @if(request.session.get("user").isDefined) {
-    <h1>ログインしています</h1>
+@main("メモアプリ") {
+  @userOpt.map { user =>
+    <h1>ようこそ、@user.username さん</h1>
+    <form action="@routes.HomeController.createNote" method="post">
+      <textarea name="content" placeholder="メモを入力してください"></textarea><br>
+      <button type="submit">メモを投稿</button>
+    </form>
+    <h2>あなたのメモ一覧</h2>
+    <ul>
+      @for(note <- notes) {
+        <li>@note.content (作成日時: @note.createdAt)</li>
+      }
+    </ul>
     <a href="@routes.HomeController.logout">ログアウト</a>
-  } else {
-    <h1>ログインしていません</h1>
-    <a href="@routes.HomeController.login">Discordでログイン</a>
+  }.getOrElse {
+    <h1>ログインしてください</h1>
+    <a href="@routes.HomeController.login">ログイン</a>
   }
 }
 
